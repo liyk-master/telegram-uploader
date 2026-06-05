@@ -1,0 +1,149 @@
+export async function onRequest(context) {
+  const { request, env, data } = context;
+
+  if (request.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  try {
+    const formData = await request.formData();
+    const count = parseInt(formData.get('count')) || 0;
+
+    if (count < 1 || count > 10) {
+      return new Response(JSON.stringify({ error: 'Count must be between 1 and 10' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const files = [];
+    for (let i = 0; i < count; i++) {
+      const file = formData.get(`file_${i}`);
+      const name = formData.get(`name_${i}`) || '';
+      const filePath = formData.get(`path_${i}`) || '';
+      const caption = formData.get(`caption_${i}`) || '';
+
+      if (!file) {
+        return new Response(JSON.stringify({ error: `File ${i} is missing` }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (!name.endsWith('.cas')) {
+        return new Response(JSON.stringify({ error: `File ${i}: only .cas files are allowed` }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      let actualSize = file.size;
+      try {
+        const content = await file.text();
+        const decoded = atob(content);
+        const meta = JSON.parse(decoded);
+        if (typeof meta.size === 'number') {
+          actualSize = meta.size;
+        }
+      } catch (e) {
+        return new Response(JSON.stringify({ error: `File ${i}: invalid .cas file` }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      files.push({ file, name, filePath, caption, actualSize });
+    }
+
+    const botToken = env.BOT_TOKEN;
+    const channelId = env.CHANNEL_ID;
+    let lastError;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const tgFormData = new FormData();
+      tgFormData.append('chat_id', channelId);
+
+      const media = files.map((f, i) => {
+        let tgCaption = '';
+        if (f.filePath.trim()) {
+          tgCaption += f.filePath.trim();
+        }
+        if (f.caption.trim()) {
+          if (tgCaption) tgCaption += '\n\n';
+          tgCaption += f.caption.trim();
+        }
+        const entry = { type: 'document', media: `attach://file_${i}` };
+        if (tgCaption) entry.caption = tgCaption;
+        tgFormData.append(`file_${i}`, f.file, f.name);
+        return entry;
+      });
+
+      tgFormData.append('media', JSON.stringify(media));
+
+      const tgRes = await fetch(
+        `https://api.telegram.org/bot${botToken}/sendMediaGroup`,
+        { method: 'POST', body: tgFormData }
+      );
+
+      if (tgRes.status === 429 && attempt < 2) {
+        const body = await tgRes.json();
+        const retryAfter = body.parameters?.retry_after ?? 5;
+        await new Promise(r => setTimeout(r, retryAfter * 1000));
+        continue;
+      }
+
+      const tgResult = await tgRes.json();
+
+      if (!tgResult.ok) {
+        lastError = tgResult.description;
+        if (attempt < 2) {
+          await new Promise(r => setTimeout(r, 3000));
+          continue;
+        }
+        return new Response(JSON.stringify({
+          error: 'Telegram API error',
+          description: tgResult.description,
+        }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      for (const f of files) {
+        await env.DB.prepare(
+          'INSERT INTO uploads (user_id, file_name, file_size, caption, file_path, status) VALUES (?, ?, ?, ?, ?, ?)'
+        ).bind(data.user.id, f.name, f.actualSize, f.caption, f.filePath, 'success').run();
+      }
+
+      const totalSize = files.reduce((sum, f) => sum + f.actualSize, 0);
+      await env.DB.prepare(
+        'UPDATE users SET upload_count = upload_count + ?, total_size = total_size + ? WHERE id = ?'
+      ).bind(files.length, totalSize, data.user.id).run();
+
+      return new Response(JSON.stringify({
+        success: true,
+        count: files.length,
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    return new Response(JSON.stringify({
+      error: 'Telegram API error',
+      description: lastError || 'Unknown error',
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+  } catch (e) {
+    return new Response(JSON.stringify({ error: e.message }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+}

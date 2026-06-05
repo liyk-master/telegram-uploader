@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Telegram Uploader</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Telegram Uploader</h1>
+      <p>上传文件到频道 · 实时同步</p>
+    </header>
+
+    <main>
+      <section class="card" id="register-section">
+        <h2>获取 API Key</h2>
+        <form id="register-form">
+          <div class="form-group">
+            <label for="name">用户名</label>
+            <input type="text" id="name" placeholder="输入你的用户名" required>
+          </div>
+          <div class="form-group">
+            <label for="code">注册码</label>
+            <input type="text" id="code" placeholder="首用户可留空，后续需管理员提供">
+          </div>
+          <button type="submit">注册</button>
+        </form>
+      </section>
+
+      <section class="card" id="result-section" style="display:none">
+        <h2>注册成功</h2>
+        <p style="color:var(--text-secondary);font-size:14px;margin-bottom:16px;">这是你的 API Key，请妥善保管：</p>
+        <div class="api-key-display">
+          <code id="api-key"></code>
+          <button class="btn-sm" id="copy-key">复制</button>
+        </div>
+        <div class="actions">
+          <a href="/dashboard" class="btn">进入仪表盘</a>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="/js/api.js"></script>
+  <script>
+    document.getElementById('register-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('name').value;
+      const code = document.getElementById('code').value;
+      const btn = e.target.querySelector('button');
+      btn.disabled = true;
+      btn.textContent = '注册中…';
+
+      try {
+        const data = await apiRequest('/api/register', {
+          method: 'POST',
+          body: JSON.stringify({ name, code }),
+        });
+
+        localStorage.setItem('api_key', data.api_key);
+        document.getElementById('api-key').textContent = data.api_key;
+        document.getElementById('register-section').style.display = 'none';
+        document.getElementById('result-section').style.display = 'block';
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '注册';
+      }
+    });
+
+    document.getElementById('copy-key').addEventListener('click', () => {
+      const key = document.getElementById('api-key').textContent;
+      navigator.clipboard.writeText(key).then(() => {
+        alert('已复制');
+      });
+    });
+
+    (function checkExistingKey() {
+      const key = localStorage.getItem('api_key');
+      if (key) {
+        document.getElementById('api-key').textContent = key;
+        document.getElementById('register-section').style.display = 'none';
+        document.getElementById('result-section').style.display = 'block';
+      }
+    })();
+  </script>
+</body>
+</html>

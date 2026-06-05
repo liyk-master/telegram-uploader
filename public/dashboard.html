@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>仪表盘 - Telegram Uploader</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Telegram Uploader</h1>
+      <p id="user-info">用户：<span id="user-name"></span></p>
+    </header>
+
+    <section class="card" id="login-section">
+      <h2>登录</h2>
+      <p style="color:var(--text-secondary);font-size:14px;margin-bottom:16px;">输入你的 API Key 登录</p>
+      <form id="login-form">
+        <div class="form-group">
+          <label for="login-key">API Key</label>
+          <input type="text" id="login-key" placeholder="输入你的 API Key" required>
+        </div>
+        <button type="submit">登录</button>
+      </form>
+      <p style="margin-top:14px;font-size:13px;color:var(--text-muted);">还没有 API Key？<a href="/" style="color:var(--accent);">注册获取</a></p>
+    </section>
+
+    <main id="dashboard-main" style="display:none">
+      <section class="card">
+        <h2>我的 API Key</h2>
+        <div class="api-key-display">
+          <code id="user-key"></code>
+          <button class="btn-sm" id="copy-key">复制</button>
+        </div>
+      </section>
+
+      <div class="stats">
+        <div class="stat-card fade-in" style="animation-delay:0.05s">
+          <span class="stat-icon">📤</span>
+          <span class="stat-number" id="upload-count">0</span>
+          <span class="stat-label">上传次数</span>
+        </div>
+        <div class="stat-card fade-in" style="animation-delay:0.1s">
+          <span class="stat-icon">💾</span>
+          <span class="stat-number" id="total-size">0</span>
+          <span class="stat-label">总大小</span>
+        </div>
+      </div>
+
+      <section class="card">
+        <h2>上传文件</h2>
+        <div class="upload-tabs">
+          <button class="upload-tab active" data-mode="single">单文件</button>
+          <button class="upload-tab" data-mode="dir">目录</button>
+        </div>
+
+        <form id="upload-form" class="upload-mode" data-mode="single">
+          <div class="upload-area" id="upload-area">
+            <span class="upload-icon">📁</span>
+            <div class="upload-text">点击选择 .cas 文件或拖拽到此处</div>
+            <div class="upload-hint">仅支持 .cas 格式</div>
+          </div>
+          <input type="file" id="file" name="file" accept=".cas" style="display:none" required>
+          <div id="file-info" style="display:none;margin-bottom:12px;padding:10px 14px;background:var(--bg-secondary);border-radius:var(--radius-sm);border:1px solid var(--border);font-size:13px;color:var(--text-secondary);"></div>
+          <div class="form-group">
+            <label for="caption">说明文字（可选）</label>
+            <textarea id="caption" name="caption" rows="2" placeholder="文件描述"></textarea>
+          </div>
+          <button type="submit">上传到频道</button>
+        </form>
+
+        <div class="upload-mode" data-mode="dir" style="display:none">
+          <div class="upload-area" id="dir-upload-area">
+            <span class="upload-icon">📂</span>
+            <div class="upload-text">点击选择目录或将目录拖拽到此处</div>
+            <div class="upload-hint">自动扫描目录中所有 .cas 文件</div>
+          </div>
+          <input type="file" id="dir-picker" webkitdirectory style="display:none">
+          <div id="dir-info" style="display:none;margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+              <span id="dir-summary" style="font-size:13px;color:var(--text-secondary);"></span>
+              <button class="btn" id="zip-upload-btn" disabled>📦 压缩上传</button>
+              <button class="btn btn-outline" id="upload-all-btn" disabled>上传全部</button>
+            </div>
+            <div class="file-tree" id="file-tree"></div>
+          </div>
+          <div id="batch-progress" style="display:none;">
+            <div class="progress-bar-track"><div class="progress-bar-fill" id="progress-fill" style="width:0%"></div></div>
+            <div class="progress-text" id="progress-text">准备中…</div>
+            <div class="batch-results" id="batch-results"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>排行榜 <span class="badge">上传最多</span></h2>
+        <div id="leaderboard-container">
+          <div class="empty-state">
+            <span class="empty-icon">🏆</span>
+            <p>暂无数据，上传文件后排行榜将自动更新</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="admin-panel" style="display:none">
+        <h2>管理 · 注册码 <span class="badge">管理员</span></h2>
+        <button class="btn" id="generate-code">生成注册码</button>
+        <div id="new-code-result" style="margin-top:16px;display:none">
+          <p style="color:var(--text-secondary);font-size:13px;margin-bottom:8px;">新注册码：</p>
+          <div class="api-key-display">
+            <code id="new-code"></code>
+            <button class="btn-sm" id="copy-new-code">复制</button>
+          </div>
+        </div>
+        <div class="table-wrapper" style="margin-top:20px">
+          <table>
+            <thead>
+              <tr>
+                <th>注册码</th>
+                <th>状态</th>
+                <th>使用人</th>
+                <th>创建时间</th>
+                <th>使用时间</th>
+              </tr>
+            </thead>
+            <tbody id="reg-codes-list"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card" id="admin-users-panel" style="display:none;margin-top:20px">
+        <h2>管理 · 用户 <span class="badge">管理员</span></h2>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>用户名</th>
+                <th>上传次数</th>
+                <th>总大小</th>
+                <th>注册时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="users-list"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>上传历史</h2>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>文件名</th>
+                <th>大小</th>
+                <th>路径</th>
+                <th>说明</th>
+                <th>状态</th>
+                <th>时间</th>
+              </tr>
+            </thead>
+            <tbody id="upload-history"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/dashboard.js"></script>
+</body>
+</html>

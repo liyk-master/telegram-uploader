@@ -1,0 +1,13 @@
+{
+  "name": "telegram-uploader",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler pages dev public",
+    "deploy": "wrangler pages deploy public",
+    "migrate": "wrangler d1 migrations apply telegram-uploader-db --remote"
+  },
+  "devDependencies": {
+    "wrangler": "^4.98.0"
+  }
+}
