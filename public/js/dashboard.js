@@ -1,3 +1,7 @@
+const UPLOAD_PAGE_SIZE = 50;
+let uploadPage = 1;
+let uploadTotal = 0;
+
 document.addEventListener('DOMContentLoaded', async () => {
   const apiKey = localStorage.getItem('api_key');
 
@@ -15,9 +19,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     showLogin();
   }
 
-  initUploadArea();
-  initDirUpload();
-  initUploadTabs();
+  initUnifiedUpload();
 });
 
 function showLogin() {
@@ -55,26 +57,7 @@ function renderDashboard(data) {
   document.getElementById('upload-count').textContent = user.upload_count;
   document.getElementById('total-size').textContent = formatSize(user.total_size);
 
-  const tbody = document.getElementById('upload-history');
-  tbody.innerHTML = '';
-
-  if (uploads.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><span class="empty-icon">📄</span><p>暂无上传记录</p></div></td></tr>';
-  } else {
-    uploads.forEach((u, i) => {
-      const tr = document.createElement('tr');
-      tr.style.animation = `slideIn 0.25s ease both ${i * 0.05}s`;
-      tr.innerHTML = `
-        <td>${escapeHtml(u.file_name)}</td>
-        <td>${formatSize(u.file_size)}</td>
-        <td>${u.file_path ? escapeHtml(u.file_path) : '-'}</td>
-        <td>${escapeHtml(u.caption) || '-'}</td>
-        <td><span class="status-${u.status}">${u.status}</span></td>
-        <td>${u.created_at}</td>
-      `;
-      tbody.appendChild(tr);
-    });
-  }
+  renderUploadHistory(data.uploads, data.total || data.uploads.length, data.page || 1);
 
   loadLeaderboard();
 
@@ -261,21 +244,6 @@ async function loadRegCodes() {
   });
 }
 
-/* === Upload Tabs === */
-function initUploadTabs() {
-  const tabs = document.querySelectorAll('.upload-tab');
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      tabs.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      const mode = tab.dataset.mode;
-      document.querySelectorAll('.upload-mode').forEach(el => {
-        el.style.display = el.dataset.mode === mode ? '' : 'none';
-      });
-    });
-  });
-}
-
 /* === Single file upload === */
 document.getElementById('upload-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -305,10 +273,62 @@ document.getElementById('upload-form').addEventListener('submit', async (e) => {
   }
 });
 
-function initUploadArea() {
+/* === Upload === */
+function getFilesFromDrop(items) {
+  const entries = Array.from(items)
+    .filter(item => item.kind === 'file')
+    .map(item => item.webkitGetAsEntry())
+    .filter(Boolean);
+  return Promise.all(entries.map(traverseEntry)).then(files => files.flat());
+}
+
+function readDirEntries(reader) {
+  return new Promise(resolve => {
+    const entries = [];
+    (function read() {
+      reader.readEntries(result => {
+        if (result.length === 0) resolve(entries);
+        else { entries.push(...result); read(); }
+      });
+    })();
+  });
+}
+
+function traverseEntry(entry) {
+  return new Promise(resolve => {
+    if (entry.isFile) {
+      entry.file(file => {
+        Object.defineProperty(file, 'webkitRelativePath', {
+          value: entry.fullPath.slice(1)
+        });
+        resolve([file]);
+      });
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      resolve(
+        readDirEntries(reader).then(entries =>
+          Promise.all(entries.map(traverseEntry)).then(files => files.flat())
+        )
+      );
+    } else {
+      resolve([]);
+    }
+  });
+}
+
+function initUnifiedUpload() {
   const area = document.getElementById('upload-area');
-  const fileInput = document.getElementById('file');
+  const fileInput = document.getElementById('file-input');
+  const dirPicker = document.getElementById('dir-picker');
   const fileInfo = document.getElementById('file-info');
+
+  const chooseDirLink = document.getElementById('choose-dir-link');
+  if (chooseDirLink) {
+    chooseDirLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      dirPicker.click();
+    });
+  }
 
   area.addEventListener('click', () => fileInput.click());
 
@@ -321,66 +341,58 @@ function initUploadArea() {
     area.classList.remove('dragover');
   });
 
-  area.addEventListener('drop', (e) => {
+  area.addEventListener('drop', async (e) => {
     e.preventDefault();
     area.classList.remove('dragover');
-    if (e.dataTransfer.files.length) {
-      fileInput.files = e.dataTransfer.files;
-      showFileInfo(fileInput.files[0]);
-    }
+    if (!e.dataTransfer.items?.length) return;
+    const allFiles = await getFilesFromDrop(e.dataTransfer.items);
+    handleFilesDetected(allFiles);
   });
 
   fileInput.addEventListener('change', () => {
-    if (fileInput.files.length) {
-      showFileInfo(fileInput.files[0]);
-    }
+    const files = Array.from(fileInput.files);
+    handleFilesDetected(files);
+    fileInput.value = '';
   });
 
-  function showFileInfo(file) {
-    fileInfo.style.display = 'block';
-    fileInfo.textContent = `${file.name} · ${formatSize(file.size)}`;
-  }
+  dirPicker.addEventListener('change', () => {
+    const files = Array.from(dirPicker.files);
+    handleFilesDetected(files);
+    dirPicker.value = '';
+  });
 }
 
-/* === Directory upload === */
-function initDirUpload() {
-  const area = document.getElementById('dir-upload-area');
-  const picker = document.getElementById('dir-picker');
+function handleFilesDetected(files) {
+  const singleForm = document.getElementById('upload-form');
+  const dirInfo = document.getElementById('dir-info');
+  const batchProgress = document.getElementById('batch-progress');
+  const fileInfo = document.getElementById('file-info');
+  const area = document.getElementById('upload-area');
 
-  area.addEventListener('click', () => picker.click());
+  singleForm.style.display = 'none';
+  dirInfo.style.display = 'none';
+  batchProgress.style.display = 'none';
 
-  area.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    area.classList.add('dragover');
-  });
+  const casFiles = files.filter(f => f.name.endsWith('.cas'));
+  const nonCasCount = files.length - casFiles.length;
 
-  area.addEventListener('dragleave', () => {
-    area.classList.remove('dragover');
-  });
-
-  area.addEventListener('drop', (e) => {
-    e.preventDefault();
-    area.classList.remove('dragover');
-    if (e.dataTransfer.items?.length) {
-      picker.files = e.dataTransfer.files;
-      handleDirPick();
-    }
-  });
-
-  picker.addEventListener('change', handleDirPick);
-}
-
-function handleDirPick() {
-  const picker = document.getElementById('dir-picker');
-  const files = Array.from(picker.files).filter(f => f.name.endsWith('.cas'));
-  const nonCas = Array.from(picker.files).filter(f => !f.name.endsWith('.cas'));
-
-  if (files.length === 0) {
-    showAlert(document.getElementById('dir-upload-area'), '目录中没有找到 .cas 文件', 'error');
+  if (casFiles.length === 0) {
+    showAlert(area, '没有找到 .cas 文件', 'error');
     return;
   }
 
-  buildFileTree(files, nonCas.length);
+  if (casFiles.length === 1 && !(casFiles[0].webkitRelativePath || casFiles[0].name).includes('/')) {
+    const file = casFiles[0];
+    fileInfo.textContent = `${file.name} · ${formatSize(file.size)}`;
+    fileInfo.style.display = 'block';
+    singleForm.style.display = 'block';
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    document.getElementById('file').files = dt.files;
+  } else {
+    buildFileTree(casFiles, nonCasCount);
+    dirInfo.style.display = 'block';
+  }
 }
 
 function buildFileTree(files, skipped) {
@@ -649,23 +661,26 @@ async function startZipUpload(files) {
   }
 }
 
-async function refreshStats() {
+async function refreshStats(page) {
   try {
-    const stats = await apiRequest('/api/user/stats');
+    const p = page || 1;
+    const stats = await apiRequest(`/api/user/stats?page=${p}&limit=${UPLOAD_PAGE_SIZE}`);
     document.getElementById('upload-count').textContent = stats.user.upload_count;
     document.getElementById('total-size').textContent = formatSize(stats.user.total_size);
-    renderUploadHistory(stats.uploads);
+    renderUploadHistory(stats.uploads, stats.total, stats.page);
   } catch (err) {
     // silent
   }
 }
 
-function renderUploadHistory(uploads) {
+function renderUploadHistory(uploads, total, page) {
   const tbody = document.getElementById('upload-history');
+  const pagination = document.getElementById('upload-pagination');
   tbody.innerHTML = '';
 
   if (uploads.length === 0) {
     tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><span class="empty-icon">📄</span><p>暂无上传记录</p></div></td></tr>';
+    if (pagination) pagination.innerHTML = '';
     return;
   }
 
@@ -682,6 +697,25 @@ function renderUploadHistory(uploads) {
     `;
     tbody.appendChild(tr);
   });
+
+  uploadTotal = total || 0;
+  uploadPage = page || 1;
+  const totalPages = Math.ceil(uploadTotal / UPLOAD_PAGE_SIZE) || 1;
+
+  if (pagination) {
+    pagination.innerHTML = `
+      <button class="btn-sm" id="page-prev" ${uploadPage <= 1 ? 'disabled' : ''}>上一页</button>
+      <span class="page-info">第 ${uploadPage} / ${totalPages} 页（共 ${uploadTotal} 条）</span>
+      <button class="btn-sm" id="page-next" ${uploadPage >= totalPages ? 'disabled' : ''}>下一页</button>
+    `;
+
+    document.getElementById('page-prev').addEventListener('click', () => {
+      if (uploadPage > 1) refreshStats(uploadPage - 1);
+    });
+    document.getElementById('page-next').addEventListener('click', () => {
+      if (uploadPage < totalPages) refreshStats(uploadPage + 1);
+    });
+  }
 }
 
 function showAlert(container, msg, type) {

@@ -13,11 +13,20 @@ export async function onRequest(context) {
       'SELECT id, name, api_key, is_admin, upload_count, total_size, created_at FROM users WHERE id = ?'
     ).bind(data.user.id).first();
 
-    const { results: uploads } = await env.DB.prepare(
-      'SELECT id, file_name, file_size, caption, file_path, status, created_at FROM uploads WHERE user_id = ? ORDER BY created_at DESC'
-    ).bind(data.user.id).all();
+    const url = new URL(request.url);
+    const page = Math.max(1, parseInt(url.searchParams.get('page')) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit')) || 50));
+    const offset = (page - 1) * limit;
 
-    return new Response(JSON.stringify({ user, uploads }), {
+    const { total } = await env.DB.prepare(
+      'SELECT COUNT(*) AS total FROM uploads WHERE user_id = ?'
+    ).bind(data.user.id).first();
+
+    const { results: uploads } = await env.DB.prepare(
+      'SELECT id, file_name, file_size, caption, file_path, status, created_at FROM uploads WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
+    ).bind(data.user.id, limit, offset).all();
+
+    return new Response(JSON.stringify({ user, uploads, total, page, limit }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });

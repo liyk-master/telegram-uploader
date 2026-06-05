@@ -50,18 +50,20 @@
 
       <section class="card">
         <h2>上传文件</h2>
-        <div class="upload-tabs">
-          <button class="upload-tab active" data-mode="single">单文件</button>
-          <button class="upload-tab" data-mode="dir">目录</button>
-        </div>
 
-        <form id="upload-form" class="upload-mode" data-mode="single">
-          <div class="upload-area" id="upload-area">
-            <span class="upload-icon">📁</span>
-            <div class="upload-text">点击选择 .cas 文件或拖拽到此处</div>
-            <div class="upload-hint">仅支持 .cas 格式</div>
-          </div>
-          <input type="file" id="file" name="file" accept=".cas" style="display:none" required>
+        <div class="upload-area" id="upload-area">
+          <span class="upload-icon">📁</span>
+          <div class="upload-text">点击选择文件或将文件/目录拖拽到此处</div>
+          <div class="upload-hint">支持单个 .cas 文件或批量/目录上传</div>
+        </div>
+        <p style="text-align:center;margin:8px 0 0;font-size:13px;color:var(--text-muted);">
+          <a href="#" id="choose-dir-link">选择目录上传</a>
+        </p>
+        <input type="file" id="file-input" accept=".cas" multiple style="display:none">
+        <input type="file" id="dir-picker" webkitdirectory style="display:none">
+
+        <form id="upload-form" style="display:none">
+          <input type="file" id="file" name="file" accept=".cas" style="display:none">
           <div id="file-info" style="display:none;margin-bottom:12px;padding:10px 14px;background:var(--bg-secondary);border-radius:var(--radius-sm);border:1px solid var(--border);font-size:13px;color:var(--text-secondary);"></div>
           <div class="form-group">
             <label for="caption">说明文字（可选）</label>
@@ -70,26 +72,18 @@
           <button type="submit">上传到频道</button>
         </form>
 
-        <div class="upload-mode" data-mode="dir" style="display:none">
-          <div class="upload-area" id="dir-upload-area">
-            <span class="upload-icon">📂</span>
-            <div class="upload-text">点击选择目录或将目录拖拽到此处</div>
-            <div class="upload-hint">自动扫描目录中所有 .cas 文件</div>
+        <div id="dir-info" style="display:none;margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span id="dir-summary" style="font-size:13px;color:var(--text-secondary);"></span>
+            <button class="btn" id="zip-upload-btn" disabled>📦 压缩上传</button>
+            <button class="btn btn-outline" id="upload-all-btn" disabled>上传全部</button>
           </div>
-          <input type="file" id="dir-picker" webkitdirectory style="display:none">
-          <div id="dir-info" style="display:none;margin-bottom:16px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-              <span id="dir-summary" style="font-size:13px;color:var(--text-secondary);"></span>
-              <button class="btn" id="zip-upload-btn" disabled>📦 压缩上传</button>
-              <button class="btn btn-outline" id="upload-all-btn" disabled>上传全部</button>
-            </div>
-            <div class="file-tree" id="file-tree"></div>
-          </div>
-          <div id="batch-progress" style="display:none;">
-            <div class="progress-bar-track"><div class="progress-bar-fill" id="progress-fill" style="width:0%"></div></div>
-            <div class="progress-text" id="progress-text">准备中…</div>
-            <div class="batch-results" id="batch-results"></div>
-          </div>
+          <div class="file-tree" id="file-tree"></div>
+        </div>
+        <div id="batch-progress" style="display:none;">
+          <div class="progress-bar-track"><div class="progress-bar-fill" id="progress-fill" style="width:0%"></div></div>
+          <div class="progress-text" id="progress-text">准备中…</div>
+          <div class="batch-results" id="batch-results"></div>
         </div>
       </section>
 
@@ -163,6 +157,7 @@
             </thead>
             <tbody id="upload-history"></tbody>
           </table>
+          <div class="pagination" id="upload-pagination"></div>
         </div>
       </section>
     </main>

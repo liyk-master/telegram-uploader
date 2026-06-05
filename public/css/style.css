@@ -710,42 +710,6 @@ td code {
   text-decoration: underline;
 }
 
-/* Upload tabs */
-.upload-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 20px;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-sm);
-  padding: 4px;
-  border: 1px solid var(--border);
-}
-
-.upload-tab {
-  flex: 1;
-  padding: 8px 16px;
-  background: transparent;
-  color: var(--text-muted);
-  border: none;
-  border-radius: var(--radius-xs);
-  font-size: 13px;
-  font-weight: 600;
-  font-family: var(--font-sans);
-  cursor: pointer;
-  transition: all var(--transition);
-}
-
-.upload-tab.active {
-  background: var(--accent);
-  color: #fff;
-  box-shadow: 0 2px 8px var(--accent-glow);
-}
-
-.upload-tab:hover:not(.active) {
-  color: var(--text-secondary);
-  background: var(--bg-card-hover);
-}
-
 /* File tree */
 .file-tree {
   max-height: 280px;
@@ -928,6 +892,25 @@ td code {
 ::-webkit-scrollbar-thumb {
   background: var(--border);
   border-radius: 3px;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 0 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.page-info {
+  white-space: nowrap;
+}
+
+.pagination .btn-sm:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 ::-webkit-scrollbar-thumb:hover {
