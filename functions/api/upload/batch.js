@@ -1,3 +1,5 @@
+import { selectBot, markRateLimited, clearRateLimit } from '../bot.js';
+
 export async function onRequest(context) {
   const { request, env, data } = context;
 
@@ -90,11 +92,19 @@ export async function onRequest(context) {
       });
     }
 
-    const botToken = env.BOT_TOKEN;
     const channelId = env.CHANNEL_ID;
+    const maxBotAttempts = 10;
     let lastError;
 
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let botAttempt = 0; botAttempt < maxBotAttempts; botAttempt++) {
+      const bot = await selectBot(env.DB);
+      if (!bot) {
+        return new Response(JSON.stringify({ error: 'No bot token available. Please add one in admin panel.' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
       const tgFormData = new FormData();
       tgFormData.append('chat_id', channelId);
 
@@ -116,15 +126,15 @@ export async function onRequest(context) {
       tgFormData.append('media', JSON.stringify(media));
 
       const tgRes = await fetch(
-        `https://api.telegram.org/bot${botToken}/sendMediaGroup`,
+        `https://api.telegram.org/bot${bot.token}/sendMediaGroup`,
         { method: 'POST', body: tgFormData }
       );
 
-      if (tgRes.status === 429 && attempt < 3) {
+      if (tgRes.status === 429) {
         const body = await tgRes.json();
-        const retryAfter = body.parameters?.retry_after ?? 5;
+        const retryAfter = Math.min(body.parameters?.retry_after ?? 5, 30);
         lastError = body.description || `Too Many Requests: retry after ${retryAfter}`;
-        await new Promise(r => setTimeout(r, retryAfter * 1000));
+        await markRateLimited(env.DB, bot.id, retryAfter);
         continue;
       }
 
@@ -132,18 +142,11 @@ export async function onRequest(context) {
 
       if (!tgResult.ok) {
         lastError = tgResult.description;
-        if (attempt < 2) {
-          await new Promise(r => setTimeout(r, 3000));
-          continue;
-        }
-        return new Response(JSON.stringify({
-          error: 'Telegram API error',
-          description: tgResult.description,
-        }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        continue;
       }
+
+      // Success
+      await clearRateLimit(env.DB, bot.id);
 
       for (const f of newFiles) {
         await env.DB.prepare(
@@ -169,12 +172,11 @@ export async function onRequest(context) {
 
     return new Response(JSON.stringify({
       error: 'Telegram API error',
-      description: lastError || 'Unknown error',
+      description: lastError || 'All bots exhausted',
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });
-
   } catch (e) {
     return new Response(JSON.stringify({ error: e.message }), {
       status: 500,

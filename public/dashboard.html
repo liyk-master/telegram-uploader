@@ -141,6 +141,31 @@
         </div>
       </section>
 
+      <section class="card" id="admin-bots-panel" style="display:none;margin-top:20px">
+        <h2>管理 · Telegram Bot <span class="badge">管理员</span></h2>
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+          <input type="text" id="bot-name" placeholder="Bot 名称" style="flex:1;min-width:120px;">
+          <input type="text" id="bot-token" placeholder="Telegram Bot Token" style="flex:2;min-width:200px;">
+          <button class="btn" id="add-bot-btn">添加</button>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>Token</th>
+                <th>上传次数</th>
+                <th>最后使用</th>
+                <th>状态</th>
+                <th>创建时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="bots-list"></tbody>
+          </table>
+        </div>
+      </section>
+
       <section class="card">
         <h2>上传历史</h2>
         <div class="table-wrapper">

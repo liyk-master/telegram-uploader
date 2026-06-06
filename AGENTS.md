@@ -30,3 +30,7 @@ No test, lint, or typecheck infrastructure exists.
 ## Static files
 
 Served from `public/` directory. Cache headers set in `public/_headers` (all no-cache).
+
+## 语言规范
+- 所有对话和文档都使用中文
+- 文档使用 markdown 格式

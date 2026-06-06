@@ -157,6 +157,7 @@ async function initAdminPanel() {
   });
 
   initUserManagement();
+  initBotTokens();
 }
 
 async function initUserManagement() {
@@ -216,6 +217,88 @@ async function resetUserKey(userId, userName, btn) {
   }
 
   try { await loadUsers(); } catch (e) { /* ignore */ }
+}
+
+async function initBotTokens() {
+  const panel = document.getElementById('admin-bots-panel');
+  panel.style.display = 'block';
+
+  document.getElementById('add-bot-btn').addEventListener('click', addBotToken);
+  await loadBotTokens();
+}
+
+async function loadBotTokens() {
+  const data = await apiRequest('/api/admin/bot-tokens');
+  const tbody = document.getElementById('bots-list');
+  tbody.innerHTML = '';
+
+  if (data.bots.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><span class="empty-icon">🤖</span><p>暂无 Bot Token</p></div></td></tr>';
+    return;
+  }
+
+  data.bots.forEach((b, i) => {
+    const tr = document.createElement('tr');
+    tr.style.animation = `slideIn 0.2s ease both ${i * 0.04}s`;
+    const isLimited = b.rate_limited_until && new Date(b.rate_limited_until) > new Date();
+    const statusText = isLimited ? '🚫 限流中' : '✅ 正常';
+    const statusClass = isLimited ? 'error' : 'success';
+    tr.innerHTML = `
+      <td>${escapeHtml(b.name)}</td>
+      <td><code>${escapeHtml(b.token_preview)}</code></td>
+      <td>${b.upload_count}</td>
+      <td>${b.last_used_at || '-'}</td>
+      <td><span class="status-${statusClass}">${statusText}</span></td>
+      <td>${b.created_at}</td>
+      <td><button class="btn-sm" data-bot-id="${b.id}" data-bot-name="${escapeHtml(b.name)}">删除</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  tbody.querySelectorAll('[data-bot-id]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      deleteBotToken(parseInt(btn.dataset.botId), btn.dataset.botName);
+    });
+  });
+}
+
+async function addBotToken() {
+  const name = document.getElementById('bot-name').value.trim();
+  const token = document.getElementById('bot-token').value.trim();
+  if (!name || !token) {
+    alert('请填写 Bot 名称和 Token');
+    return;
+  }
+
+  const btn = document.getElementById('add-bot-btn');
+  btn.disabled = true;
+  btn.textContent = '添加中…';
+
+  try {
+    await apiRequest('/api/admin/bot-tokens', {
+      method: 'POST',
+      body: JSON.stringify({ name, token }),
+    });
+    document.getElementById('bot-name').value = '';
+    document.getElementById('bot-token').value = '';
+    await loadBotTokens();
+  } catch (err) {
+    alert('添加失败：' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '添加';
+  }
+}
+
+async function deleteBotToken(id, name) {
+  if (!confirm(`确定要删除 Bot "${name}" 吗？`)) return;
+
+  try {
+    await apiRequest(`/api/admin/bot-tokens?id=${id}`, { method: 'DELETE' });
+    await loadBotTokens();
+  } catch (err) {
+    alert('删除失败：' + err.message);
+  }
 }
 
 async function loadRegCodes() {
