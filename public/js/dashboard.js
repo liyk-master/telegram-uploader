@@ -1,4 +1,6 @@
-const UPLOAD_PAGE_SIZE = 50;
+function getPageSize() {
+  return parseInt(localStorage.getItem('upload_page_size')) || 10;
+}
 let uploadPage = 1;
 let uploadTotal = 0;
 
@@ -11,7 +13,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   try {
-    const data = await apiRequest('/api/user/stats');
+    const data = await apiRequest(`/api/user/stats?page=1&limit=${getPageSize()}`);
     renderDashboard(data);
     document.getElementById('login-section').style.display = 'none';
     document.getElementById('dashboard-main').style.display = 'block';
@@ -35,7 +37,7 @@ function showLogin() {
 
     try {
       localStorage.setItem('api_key', key);
-      const data = await apiRequest('/api/user/stats');
+      const data = await apiRequest(`/api/user/stats?page=1&limit=${getPageSize()}`);
       renderDashboard(data);
       section.style.display = 'none';
       document.getElementById('dashboard-main').style.display = 'block';
@@ -492,6 +494,7 @@ async function startBatchUpload(files) {
   let completed = 0;
   let successCount = 0;
   let failCount = 0;
+  let skipCount = 0;
   let failedFiles = [];
 
   const fileRows = files.map(file => {
@@ -535,9 +538,30 @@ async function startBatchUpload(files) {
         fd.append(`path_${i}`, file.webkitRelativePath || file.name);
       });
 
-      await apiRequest('/api/upload/batch', { method: 'POST', body: fd });
+      const result = await apiRequest('/api/upload/batch', { method: 'POST', body: fd });
+      const dupCount = result.duplicated ? result.duplicated.length : 0;
+      const noMd5Count = result.no_md5 ? result.no_md5.length : 0;
+      successCount += result.count;
+      skipCount += dupCount + noMd5Count;
       setBatchStatus(startIdx, batch.length, '✅', '成功', 'success');
-      successCount += batch.length;
+      if (dupCount > 0 || noMd5Count > 0) {
+        const dupNames = new Set((result.duplicated || []).map(d => d.name));
+        const noMd5Names = new Set((result.no_md5 || []).map(d => d.name));
+        for (let j = 0; j < batch.length; j++) {
+          const fileName = batch[j].webkitRelativePath || batch[j].name;
+          if (dupNames.has(fileName)) {
+            const row = fileRows[startIdx + j];
+            row.className = 'batch-result-item skip';
+            row.querySelector('.br-icon').textContent = '⏭️';
+            row.querySelector('.br-msg').textContent = '已存在，跳过';
+          } else if (noMd5Names.has(fileName)) {
+            const row = fileRows[startIdx + j];
+            row.className = 'batch-result-item skip';
+            row.querySelector('.br-icon').textContent = '⛔';
+            row.querySelector('.br-msg').textContent = '无 md5，跳过';
+          }
+        }
+      }
     } catch (err) {
       setBatchStatus(startIdx, batch.length, '❌', err.message, 'error');
       failCount += batch.length;
@@ -556,15 +580,17 @@ async function startBatchUpload(files) {
   await refreshStats();
   loadLeaderboard();
 
+  let summary = `完成！${successCount} 成功`;
+  if (skipCount > 0) summary += `，${skipCount} 跳过（已存在）`;
+  if (failCount > 0) summary += `，${failCount} 失败`;
+  text.textContent = summary;
+
   if (failedFiles.length > 0) {
-    text.textContent = `完成！${successCount} 成功，${failCount} 失败`;
     const detail = document.createElement('div');
     detail.className = 'alert alert-error';
     detail.style.marginTop = '8px';
     detail.innerHTML = `<strong>失败文件：</strong><br>${failedFiles.map(f => escapeHtml(f)).join('<br>')}`;
     results.appendChild(detail);
-  } else {
-    text.textContent = `全部完成！${successCount} 个文件上传成功 🎉`;
   }
 }
 
@@ -581,16 +607,15 @@ async function startZipUpload(files) {
   zipBtn.disabled = true;
   batchBtn.disabled = true;
 
-  const totalSize = files.reduce((s, f) => s + f.size, 0);
-  let totalCasSize = 0;
   const dirName = files[0]?.webkitRelativePath?.split('/')[0] || 'archive';
   const zipName = `${dirName}.zip`;
+  const totalSize = files.reduce((s, f) => s + f.size, 0);
 
   const statusItem = document.createElement('div');
   statusItem.className = 'batch-result-item';
   statusItem.innerHTML = `
-    <span class="br-icon">📦</span>
-    <span class="br-file">正在压缩 ${files.length} 个文件…</span>
+    <span class="br-icon">📖</span>
+    <span class="br-file">正在解析 ${files.length} 个文件…</span>
     <span class="br-msg">${formatSize(totalSize)}</span>
   `;
   results.appendChild(statusItem);
@@ -598,37 +623,99 @@ async function startZipUpload(files) {
   await new Promise(r => setTimeout(r, 50));
 
   try {
-    const zip = new JSZip();
+    // Phase 1: Decode all files, extract md5s and metadata
+    const fileInfos = [];
+    const allMd5s = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const path = file.webkitRelativePath || file.name;
       const data = await file.arrayBuffer();
-      const text = new TextDecoder().decode(data);
+      let md5 = null;
+      let casSize = 0;
       try {
+        const text = new TextDecoder().decode(data);
         const decoded = JSON.parse(atob(text));
-        if (typeof decoded.size === 'number') totalCasSize += decoded.size;
+        if (typeof decoded.md5 === 'string') md5 = decoded.md5;
+        if (typeof decoded.size === 'number') casSize = decoded.size;
       } catch (e) { /* skip malformed */ }
-      zip.file(path, data);
+      fileInfos.push({ file, path, md5, casSize, rawSize: file.size, data });
+      if (md5) allMd5s.push(md5);
 
       if (i % 10 === 0 || i === files.length - 1) {
         const pct = Math.round(((i + 1) / files.length) * 100);
         fill.style.width = pct + '%';
-        text.textContent = `压缩中 ${i + 1}/${files.length} (${formatSize(totalSize)})`;
+        text.textContent = `解析中 ${i + 1}/${files.length}`;
+      }
+    }
+
+    // Phase 2: Check which md5s already exist
+    let newFileInfos = [];
+    let skippedFileInfos = [];
+
+    const existingSet = new Set();
+    if (allMd5s.length > 0) {
+      const result = await apiRequest('/api/upload/check-md5s', {
+        method: 'POST',
+        body: JSON.stringify({ md5s: allMd5s }),
+      });
+      for (const m of result.existing_md5s) existingSet.add(m);
+    }
+
+    for (const fi of fileInfos) {
+      if (!fi.md5 || existingSet.has(fi.md5)) {
+        skippedFileInfos.push(fi);
+      } else {
+        newFileInfos.push(fi);
+      }
+    }
+
+    // Show skipped items
+    for (const fi of skippedFileInfos) {
+      const item = document.createElement('div');
+      item.className = 'batch-result-item skip';
+      item.innerHTML = `
+        <span class="br-icon">⏭️</span>
+        <span class="br-file">${escapeHtml(fi.path)}</span>
+        <span class="br-msg">${fi.md5 ? '已存在，跳过' : '无 md5 字段，跳过'}</span>
+      `;
+      results.appendChild(item);
+    }
+
+    // Phase 3: Zip all files (skip only affects stats, not the zip sent to Telegram)
+    const newCasSize = newFileInfos.reduce((s, f) => s + (f.casSize || f.rawSize), 0);
+
+    statusItem.querySelector('.br-icon').textContent = '📦';
+    statusItem.querySelector('.br-file').textContent = `正在压缩 ${fileInfos.length} 个文件…（${newFileInfos.length} 个新文件）`;
+    statusItem.querySelector('.br-msg').textContent = formatSize(totalSize);
+
+    fill.style.width = '0%';
+    text.textContent = `压缩中…`;
+
+    const zip = new JSZip();
+    for (let i = 0; i < fileInfos.length; i++) {
+      const fi = fileInfos[i];
+      zip.file(fi.path, fi.data);
+
+      if (i % 10 === 0 || i === fileInfos.length - 1) {
+        const pct = Math.round(((i + 1) / fileInfos.length) * 100);
+        fill.style.width = pct + '%';
+        text.textContent = `压缩中 ${i + 1}/${fileInfos.length}`;
       }
     }
 
     const zipBlob = await zip.generateAsync({ type: 'blob' });
     text.textContent = `压缩完成: ${formatSize(zipBlob.size)} (原始 ${formatSize(totalSize)})`;
 
-    statusItem.querySelector('.br-icon').textContent = '📦';
     statusItem.querySelector('.br-file').textContent = zipName;
     statusItem.querySelector('.br-msg').textContent = `${formatSize(zipBlob.size)}`;
 
+    // Phase 4: Upload zip
     const fd = new FormData();
     fd.append('file', zipBlob, zipName);
     fd.append('name', zipName);
     fd.append('path', dirName);
-    fd.append('total_size', totalCasSize || totalSize);
+    fd.append('total_size', newCasSize);
+    fd.append('md5_list', JSON.stringify(fileInfos.map(f => f.md5).filter(Boolean)));
 
     const uploadItem = document.createElement('div');
     uploadItem.className = 'batch-result-item';
@@ -646,9 +733,9 @@ async function startZipUpload(files) {
     uploadItem.className = 'batch-result-item success';
     uploadItem.querySelector('.br-icon').textContent = '✅';
     uploadItem.querySelector('.br-file').textContent = '上传成功';
-    uploadItem.querySelector('.br-msg').textContent = `原始 ${formatSize(totalCasSize || totalSize)} → 压缩 ${formatSize(zipBlob.size)}`;
+    uploadItem.querySelector('.br-msg').textContent = `${newFileInfos.length}/${files.length} 新文件, 压缩 ${formatSize(zipBlob.size)}`;
     fill.style.width = '100%';
-    text.textContent = `上传成功！${zipName} (原始 ${formatSize(totalCasSize || totalSize)} → 压缩 ${formatSize(zipBlob.size)})`;
+    text.textContent = `上传成功！${zipName} (${newFileInfos.length}/${files.length} 新文件, 压缩 ${formatSize(zipBlob.size)})`;
   } catch (err) {
     statusItem.className = 'batch-result-item error';
     statusItem.querySelector('.br-msg').textContent = err.message;
@@ -664,7 +751,7 @@ async function startZipUpload(files) {
 async function refreshStats(page) {
   try {
     const p = page || 1;
-    const stats = await apiRequest(`/api/user/stats?page=${p}&limit=${UPLOAD_PAGE_SIZE}`);
+    const stats = await apiRequest(`/api/user/stats?page=${p}&limit=${getPageSize()}`);
     document.getElementById('upload-count').textContent = stats.user.upload_count;
     document.getElementById('total-size').textContent = formatSize(stats.user.total_size);
     renderUploadHistory(stats.uploads, stats.total, stats.page);
@@ -700,13 +787,19 @@ function renderUploadHistory(uploads, total, page) {
 
   uploadTotal = total || 0;
   uploadPage = page || 1;
-  const totalPages = Math.ceil(uploadTotal / UPLOAD_PAGE_SIZE) || 1;
+  const totalPages = Math.ceil(uploadTotal / getPageSize()) || 1;
 
   if (pagination) {
+    const currentSize = getPageSize();
     pagination.innerHTML = `
       <button class="btn-sm" id="page-prev" ${uploadPage <= 1 ? 'disabled' : ''}>上一页</button>
       <span class="page-info">第 ${uploadPage} / ${totalPages} 页（共 ${uploadTotal} 条）</span>
       <button class="btn-sm" id="page-next" ${uploadPage >= totalPages ? 'disabled' : ''}>下一页</button>
+      <span class="page-size-select">
+        每页 <select id="page-size-select">
+          ${[10, 20, 50, 100].map(n => `<option value="${n}"${n === currentSize ? ' selected' : ''}>${n}</option>`).join('')}
+        </select>
+      </span>
     `;
 
     document.getElementById('page-prev').addEventListener('click', () => {
@@ -714,6 +807,10 @@ function renderUploadHistory(uploads, total, page) {
     });
     document.getElementById('page-next').addEventListener('click', () => {
       if (uploadPage < totalPages) refreshStats(uploadPage + 1);
+    });
+    document.getElementById('page-size-select').addEventListener('change', (e) => {
+      localStorage.setItem('upload_page_size', e.target.value);
+      refreshStats(1);
     });
   }
 }

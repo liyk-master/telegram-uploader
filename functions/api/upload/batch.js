@@ -19,7 +19,10 @@ export async function onRequest(context) {
       });
     }
 
-    const files = [];
+    const newFiles = [];
+    const duplicated = [];
+    const noMd5 = [];
+
     for (let i = 0; i < count; i++) {
       const file = formData.get(`file_${i}`);
       const name = formData.get(`name_${i}`) || '';
@@ -41,10 +44,12 @@ export async function onRequest(context) {
       }
 
       let actualSize = file.size;
+      let content;
+      let meta;
       try {
-        const content = await file.text();
+        content = await file.text();
         const decoded = atob(content);
-        const meta = JSON.parse(decoded);
+        meta = JSON.parse(decoded);
         if (typeof meta.size === 'number') {
           actualSize = meta.size;
         }
@@ -55,7 +60,35 @@ export async function onRequest(context) {
         });
       }
 
-      files.push({ file, name, filePath, caption, actualSize });
+      if (!meta || typeof meta.md5 !== 'string') {
+        noMd5.push({ name, filePath, caption });
+        continue;
+      }
+
+      const contentHash = meta.md5;
+      const sliceMd5 = meta.sliceMD5 || meta.sliceMd5 || meta.slice_md5 || '';
+
+      const existing = await env.DB.prepare(
+        'SELECT id FROM uploads WHERE content_hash = ?'
+      ).bind(contentHash).first();
+
+      if (existing) {
+        duplicated.push({ name, filePath, caption });
+      } else {
+        newFiles.push({ file, name, filePath, caption, actualSize, contentHash, sliceMd5 });
+      }
+    }
+
+    if (newFiles.length === 0) {
+      return new Response(JSON.stringify({
+        success: true,
+        count: 0,
+        duplicated: duplicated.map(d => ({ name: d.name, path: d.filePath })),
+        no_md5: noMd5.map(d => ({ name: d.name, path: d.filePath })),
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     const botToken = env.BOT_TOKEN;
@@ -66,7 +99,7 @@ export async function onRequest(context) {
       const tgFormData = new FormData();
       tgFormData.append('chat_id', channelId);
 
-      const media = files.map((f, i) => {
+      const media = newFiles.map((f, i) => {
         let tgCaption = '';
         if (f.filePath.trim()) {
           tgCaption += f.filePath.trim();
@@ -112,20 +145,22 @@ export async function onRequest(context) {
         });
       }
 
-      for (const f of files) {
+      for (const f of newFiles) {
         await env.DB.prepare(
-          'INSERT INTO uploads (user_id, file_name, file_size, caption, file_path, status) VALUES (?, ?, ?, ?, ?, ?)'
-        ).bind(data.user.id, f.name, f.actualSize, f.caption, f.filePath, 'success').run();
+          'INSERT INTO uploads (user_id, file_name, file_size, caption, file_path, status, content_hash, slice_md5) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        ).bind(data.user.id, f.name, f.actualSize, f.caption, f.filePath, 'success', f.contentHash, f.sliceMd5).run();
       }
 
-      const totalSize = files.reduce((sum, f) => sum + f.actualSize, 0);
+      const totalSize = newFiles.reduce((sum, f) => sum + f.actualSize, 0);
       await env.DB.prepare(
         'UPDATE users SET upload_count = upload_count + ?, total_size = total_size + ? WHERE id = ?'
-      ).bind(files.length, totalSize, data.user.id).run();
+      ).bind(newFiles.length, totalSize, data.user.id).run();
 
       return new Response(JSON.stringify({
         success: true,
-        count: files.length,
+        count: newFiles.length,
+        duplicated: duplicated.map(d => ({ name: d.name, path: d.filePath })),
+        no_md5: noMd5.map(d => ({ name: d.name, path: d.filePath })),
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },

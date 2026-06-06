@@ -29,17 +29,40 @@ export async function onRequest(context) {
     }
 
     let actualSize = file.size;
+    let content;
+    let meta;
 
     try {
-      const content = await file.text();
+      content = await file.text();
       const decoded = atob(content);
-      const meta = JSON.parse(decoded);
+      meta = JSON.parse(decoded);
       if (typeof meta.size === 'number') {
         actualSize = meta.size;
       }
     } catch (e) {
       return new Response(JSON.stringify({ error: 'Invalid .cas file: cannot parse content' }), {
         status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!meta || typeof meta.md5 !== 'string') {
+      return new Response(JSON.stringify({ error: 'File missing md5 field in .cas JSON' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const contentHash = meta.md5;
+    const sliceMd5 = meta.sliceMD5 || meta.sliceMd5 || meta.slice_md5 || '';
+
+    const existing = await env.DB.prepare(
+      'SELECT id FROM uploads WHERE content_hash = ?'
+    ).bind(contentHash).first();
+
+    if (existing) {
+      return new Response(JSON.stringify({ error: 'Duplicate file', content_hash: contentHash }), {
+        status: 409,
         headers: { 'Content-Type': 'application/json' },
       });
     }
@@ -77,8 +100,8 @@ export async function onRequest(context) {
     }
 
     await env.DB.prepare(
-      'INSERT INTO uploads (user_id, file_name, file_size, caption, file_path, status) VALUES (?, ?, ?, ?, ?, ?)'
-    ).bind(data.user.id, file.name, actualSize, caption.trim() || '', filePath, 'success').run();
+      'INSERT INTO uploads (user_id, file_name, file_size, caption, file_path, status, content_hash, slice_md5) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(data.user.id, file.name, actualSize, caption.trim() || '', filePath, 'success', contentHash, sliceMd5).run();
 
     await env.DB.prepare(
       'UPDATE users SET upload_count = upload_count + 1, total_size = total_size + ? WHERE id = ?'

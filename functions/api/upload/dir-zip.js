@@ -14,13 +14,34 @@ export async function onRequest(context) {
     const name = formData.get('name') || 'archive.zip';
     const filePath = formData.get('path') || '';
     const caption = formData.get('caption') || '';
-    const totalSize = parseInt(formData.get('total_size')) || file.size;
+    let totalSize = parseInt(formData.get('total_size'));
+    if (isNaN(totalSize) || totalSize < 0) totalSize = file.size;
+    const md5List = JSON.parse(formData.get('md5_list') || '[]');
 
     if (!file) {
       return new Response(JSON.stringify({ error: 'File is required' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+
+    let combinedHash = '';
+    if (md5List.length > 0) {
+      const sortedMd5s = [...md5List].sort().join(',');
+      const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sortedMd5s));
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      combinedHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+      const existing = await env.DB.prepare(
+        'SELECT id FROM uploads WHERE content_hash = ?'
+      ).bind(combinedHash).first();
+
+      if (existing) {
+        return new Response(JSON.stringify({
+          error: 'All files already exist',
+          duplicated: true,
+        }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+      }
     }
 
     const tgFormData = new FormData();
@@ -57,14 +78,14 @@ export async function onRequest(context) {
     }
 
     await env.DB.prepare(
-      'INSERT INTO uploads (user_id, file_name, file_size, caption, file_path, status) VALUES (?, ?, ?, ?, ?, ?)'
-    ).bind(data.user.id, name, totalSize, caption, filePath, 'success').run();
+      'INSERT INTO uploads (user_id, file_name, file_size, caption, file_path, status, content_hash, slice_md5) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(data.user.id, name, file.size, caption, filePath, 'success', combinedHash, '').run();
 
     await env.DB.prepare(
       'UPDATE users SET upload_count = upload_count + 1, total_size = total_size + ? WHERE id = ?'
     ).bind(totalSize, data.user.id).run();
 
-    return new Response(JSON.stringify({ success: true, file_size: totalSize }), {
+    return new Response(JSON.stringify({ success: true, file_size: file.size, new_size: totalSize }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });

@@ -913,6 +913,23 @@ td code {
   cursor: not-allowed;
 }
 
+.page-size-select {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.page-size-select select {
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-light);
 }

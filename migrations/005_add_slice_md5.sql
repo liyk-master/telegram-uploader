@@ -1,0 +1,1 @@
+ALTER TABLE uploads ADD COLUMN slice_md5 TEXT;
