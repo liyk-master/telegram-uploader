@@ -46,14 +46,13 @@ export async function onRequest(context) {
       });
     }
 
-    if (!meta || typeof meta.md5 !== 'string') {
+    const contentHash = meta.md5 || meta.MD5 || meta.Md5;
+    if (!contentHash || typeof contentHash !== 'string') {
       return new Response(JSON.stringify({ error: 'File missing md5 field in .cas JSON' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
     }
-
-    const contentHash = meta.md5;
     const sliceMd5 = meta.sliceMD5 || meta.sliceMd5 || meta.slice_md5 || '';
 
     const existing = await env.DB.prepare(

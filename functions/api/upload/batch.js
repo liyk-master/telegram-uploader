@@ -60,12 +60,11 @@ export async function onRequest(context) {
         });
       }
 
-      if (!meta || typeof meta.md5 !== 'string') {
+      const contentHash = meta.md5 || meta.MD5 || meta.Md5;
+      if (!contentHash || typeof contentHash !== 'string') {
         noMd5.push({ name, filePath, caption });
         continue;
       }
-
-      const contentHash = meta.md5;
       const sliceMd5 = meta.sliceMD5 || meta.sliceMd5 || meta.slice_md5 || '';
 
       const existing = await env.DB.prepare(
