@@ -120,9 +120,10 @@ export async function onRequest(context) {
         { method: 'POST', body: tgFormData }
       );
 
-      if (tgRes.status === 429 && attempt < 2) {
+      if (tgRes.status === 429 && attempt < 3) {
         const body = await tgRes.json();
         const retryAfter = body.parameters?.retry_after ?? 5;
+        lastError = body.description || `Too Many Requests: retry after ${retryAfter}`;
         await new Promise(r => setTimeout(r, retryAfter * 1000));
         continue;
       }

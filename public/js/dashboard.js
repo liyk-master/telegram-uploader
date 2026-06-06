@@ -490,7 +490,7 @@ async function startBatchUpload(files) {
   btn.disabled = true;
 
   const BATCH_SIZE = 10;
-  const BATCH_DELAY = 1000;
+  const BATCH_DELAY = 3000;
   let completed = 0;
   let successCount = 0;
   let failCount = 0;
