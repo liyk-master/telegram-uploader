@@ -16,12 +16,16 @@ export async function onRequest(context) {
     });
   }
 
-  const placeholders = md5s.map(() => '?').join(',');
-  const { results } = await env.DB.prepare(
-    `SELECT DISTINCT content_hash FROM uploads WHERE content_hash IN (${placeholders})`
-  ).bind(...md5s).all();
-
-  const existingSet = new Set(results.map(r => r.content_hash));
+  const existingSet = new Set();
+  const BATCH_SIZE = 100;
+  for (let i = 0; i < md5s.length; i += BATCH_SIZE) {
+    const batch = md5s.slice(i, i + BATCH_SIZE);
+    const stmts = batch.map(md5 =>
+      env.DB.prepare('SELECT 1 FROM uploads WHERE content_hash = ?').bind(md5)
+    );
+    const results = await env.DB.batch(stmts);
+    results.forEach((r, j) => { if (r.results.length > 0) existingSet.add(batch[j]); });
+  }
   const existingMd5s = md5s.filter(m => existingSet.has(m));
   const newMd5s = md5s.filter(m => !existingSet.has(m));
 

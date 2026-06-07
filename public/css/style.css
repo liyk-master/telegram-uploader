@@ -837,6 +837,214 @@ td code {
   color: var(--error);
 }
 
+/* Link share card */
+.card-link {
+  --link-accent: #f59e0b;
+  --link-accent-soft: rgba(245, 158, 11, 0.08);
+  --link-accent-glow: rgba(245, 158, 11, 0.15);
+  border-left: 3px solid var(--link-accent);
+}
+
+.card-link::before {
+  background: linear-gradient(90deg, var(--link-accent), transparent);
+  opacity: 0.2;
+}
+
+.card-link-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.card-link-icon {
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  background: var(--link-accent-soft);
+  border: 1px solid rgba(245, 158, 11, 0.15);
+  border-radius: 12px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.card-link-icon::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), transparent 60%);
+  z-index: -1;
+}
+
+.card-link-header h2 {
+  margin-bottom: 2px;
+  font-size: 17px;
+}
+
+.card-link-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 400;
+  margin: 0;
+}
+
+.link-input-group {
+  margin-bottom: 12px;
+}
+
+.link-input-wrap {
+  display: flex;
+  align-items: stretch;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.link-input-wrap:focus-within {
+  border-color: var(--link-accent);
+  box-shadow: 0 0 0 3px var(--link-accent-soft), inset 0 0 0 1px rgba(245, 158, 11, 0.05);
+}
+
+.link-input-prefix {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--link-accent);
+  background: rgba(245, 158, 11, 0.06);
+  border-right: 1px solid var(--border);
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+  user-select: none;
+}
+
+.link-input-wrap input[type="url"] {
+  flex: 1;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 12px 14px;
+  font-size: 14px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  outline: none;
+  min-width: 0;
+}
+
+.link-input-wrap input[type="url"]::placeholder {
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+
+.link-paste-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--border);
+  font-size: 16px;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.2s ease;
+  border-radius: 0;
+  min-width: 42px;
+}
+
+.link-paste-btn::after {
+  display: none;
+}
+
+.link-paste-btn:hover {
+  background: var(--link-accent-soft);
+  color: var(--link-accent);
+}
+
+.link-paste-btn:active {
+  transform: scale(0.92);
+}
+
+.link-caption-wrap {
+  margin-bottom: 16px;
+}
+
+.link-caption-wrap textarea {
+  resize: none;
+  overflow: hidden;
+  min-height: 44px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  width: 100%;
+  font-size: 13px;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  outline: none;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.link-caption-wrap textarea:focus {
+  border-color: var(--link-accent);
+  box-shadow: 0 0 0 3px var(--link-accent-soft);
+}
+
+.link-caption-wrap textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.link-submit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 22px;
+  background: linear-gradient(135deg, var(--link-accent), #d97706);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all 0.25s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.link-submit-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.link-submit-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px var(--link-accent-glow);
+  background: linear-gradient(135deg, #f5a623, #e08e00);
+}
+
+.link-submit-btn:active {
+  transform: translateY(0);
+}
+
+.link-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 /* Mobile */
 @media (max-width: 600px) {
   .container {

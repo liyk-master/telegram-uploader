@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>标签管理 - Telegram Uploader</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>标签管理</h1>
+      <p><a href="/dashboard" style="color:var(--accent);font-size:14px;">← 返回仪表盘</a></p>
+    </header>
+
+    <main>
+      <section class="card">
+        <h2>创建标签</h2>
+        <div style="display:flex;gap:8px;margin-bottom:4px;">
+          <input type="text" id="tag-name" placeholder="标签名称" style="flex:1;">
+          <button class="btn" id="create-tag-btn">创建</button>
+        </div>
+      </section>
+
+      <section class="card" style="margin-top:24px;">
+        <h2>所有标签</h2>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>标签名</th>
+                <th>使用次数</th>
+                <th>创建时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="tags-list"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="/js/api.js"></script>
+  <script src="/js/tags.js"></script>
+</body>
+</html>

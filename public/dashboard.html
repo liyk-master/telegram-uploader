@@ -54,16 +54,16 @@
         <div class="upload-area" id="upload-area">
           <span class="upload-icon">📁</span>
           <div class="upload-text">点击选择文件或将文件/目录拖拽到此处</div>
-          <div class="upload-hint">支持单个 .cas 文件或批量/目录上传</div>
+          <div class="upload-hint">支持 .cas / .zip 文件，目录或拖拽上传</div>
         </div>
         <p style="text-align:center;margin:8px 0 0;font-size:13px;color:var(--text-muted);">
           <a href="#" id="choose-dir-link">选择目录上传</a>
         </p>
-        <input type="file" id="file-input" accept=".cas" multiple style="display:none">
+        <input type="file" id="file-input" accept=".cas,.zip" multiple style="display:none">
         <input type="file" id="dir-picker" webkitdirectory style="display:none">
 
         <form id="upload-form" style="display:none">
-          <input type="file" id="file" name="file" accept=".cas" style="display:none">
+          <input type="file" id="file" name="file" accept=".cas,.zip" style="display:none">
           <div id="file-info" style="display:none;margin-bottom:12px;padding:10px 14px;background:var(--bg-secondary);border-radius:var(--radius-sm);border:1px solid var(--border);font-size:13px;color:var(--text-secondary);"></div>
           <div class="form-group">
             <label for="caption">说明文字（可选）</label>
@@ -85,6 +85,40 @@
           <div class="progress-text" id="progress-text">准备中…</div>
           <div class="batch-results" id="batch-results"></div>
         </div>
+
+        <div id="zip-info" style="display:none;margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span id="zip-name-display" style="font-size:14px;font-weight:600;color:var(--text);"></span>
+            <button class="btn" id="from-zip-btn" disabled>📦 上传 .zip</button>
+          </div>
+          <div id="zip-summary" style="font-size:13px;color:var(--text-secondary);"></div>
+        </div>
+      </section>
+
+      <section class="card card-link">
+        <div class="card-link-header">
+          <span class="card-link-icon">🔗</span>
+          <div>
+            <h2>分享链接</h2>
+            <p class="card-link-subtitle">转发天翼云盘分享到频道</p>
+          </div>
+        </div>
+        <form id="link-form">
+          <div class="link-input-group">
+            <div class="link-input-wrap">
+              <span class="link-input-prefix">cloud.189.cn</span>
+              <input type="url" id="link-url" placeholder="粘贴分享链接" required>
+              <button type="button" class="link-paste-btn" id="link-paste-btn" title="从剪贴板粘贴">📋</button>
+            </div>
+          </div>
+          <div class="link-caption-wrap">
+            <textarea id="link-caption" rows="1" placeholder="添加说明文字（可选）"></textarea>
+          </div>
+          <button type="submit" class="link-submit-btn">
+            <span>📤</span>
+            <span>转发到频道</span>
+          </button>
+        </form>
       </section>
 
       <section class="card">
@@ -187,7 +221,7 @@
       </section>
     </main>
   </div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="/js/jszip.min.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/dashboard.js"></script>
 </body>

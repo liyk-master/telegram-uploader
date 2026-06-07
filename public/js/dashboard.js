@@ -452,11 +452,22 @@ function handleFilesDetected(files) {
   const dirInfo = document.getElementById('dir-info');
   const batchProgress = document.getElementById('batch-progress');
   const fileInfo = document.getElementById('file-info');
+  const zipInfo = document.getElementById('zip-info');
   const area = document.getElementById('upload-area');
 
   singleForm.style.display = 'none';
   dirInfo.style.display = 'none';
   batchProgress.style.display = 'none';
+  if (zipInfo) zipInfo.style.display = 'none';
+
+  const zipFiles = files.filter(f => f.name.endsWith('.zip'));
+  if (zipFiles.length > 0) {
+    if (zipFiles.length > 1) {
+      showAlert(area, '同时仅支持处理一个 .zip 文件，已选择第一个', 'error');
+    }
+    processZipFiles([zipFiles[0]]);
+    return;
+  }
 
   const casFiles = files.filter(f => f.name.endsWith('.cas'));
   const nonCasCount = files.length - casFiles.length;
@@ -897,6 +908,215 @@ function renderUploadHistory(uploads, total, page) {
     });
   }
 }
+
+/* === From-zip upload === */
+let _zipUploadData = null;
+
+async function processZipFiles(zipFiles) {
+  const zipInfo = document.getElementById('zip-info');
+  const batchProgress = document.getElementById('batch-progress');
+  const fill = document.getElementById('progress-fill');
+  const text = document.getElementById('progress-text');
+  const results = document.getElementById('batch-results');
+  const area = document.getElementById('upload-area');
+
+  batchProgress.style.display = 'block';
+  results.innerHTML = '';
+  fill.style.width = '0%';
+  text.textContent = '正在解析 .zip 文件…';
+
+  try {
+    const allEntries = [];
+
+    for (const zipFile of zipFiles) {
+      const arrayBuffer = await zipFile.arrayBuffer();
+      const zip = await JSZip.loadAsync(arrayBuffer);
+
+      zip.forEach((relativePath, entry) => {
+        if (!entry.dir && relativePath.endsWith('.cas')) {
+          allEntries.push({ entry, path: relativePath, zipName: zipFile.name });
+        }
+      });
+    }
+
+    if (allEntries.length === 0) {
+      batchProgress.style.display = 'none';
+      showAlert(area, '.zip 文件中未找到 .cas 文件', 'error');
+      return;
+    }
+
+    const fileInfos = [];
+    for (let i = 0; i < allEntries.length; i++) {
+      const { entry, path } = allEntries[i];
+      const content = await entry.async('string');
+      let md5 = null;
+      let size = 0;
+      try {
+        const decoded = JSON.parse(atob(content));
+        if (typeof decoded.md5 === 'string') md5 = decoded.md5;
+        if (typeof decoded.size === 'number') size = decoded.size;
+      } catch (e) { /* skip malformed */ }
+
+      const name = path.split('/').pop();
+      fileInfos.push({ name, path, md5, size });
+
+      fill.style.width = Math.round(((i + 1) / allEntries.length) * 50) + '%';
+      text.textContent = `解析中 ${i + 1}/${allEntries.length}`;
+    }
+
+    const md5s = fileInfos.map(f => f.md5).filter(Boolean);
+    let newCount = allEntries.length;
+    let dedupCount = 0;
+    let totalNewSize = fileInfos.reduce((s, f) => s + (f.size || 0), 0);
+
+    if (md5s.length > 0) {
+      const result = await apiRequest('/api/upload/check-md5s', {
+        method: 'POST',
+        body: JSON.stringify({ md5s }),
+      });
+      const existingSet = new Set(result.existing_md5s || []);
+      dedupCount = md5s.filter(m => existingSet.has(m)).length;
+      newCount = md5s.length - dedupCount;
+
+      totalNewSize = 0;
+      for (const fi of fileInfos) {
+        if (fi.md5 && !existingSet.has(fi.md5)) {
+          totalNewSize += fi.size || 0;
+        }
+      }
+    }
+
+    fill.style.width = '50%';
+    text.textContent = `解析完成: ${allEntries.length} 个 .cas，${newCount} 个新，${dedupCount} 个已存在`;
+
+    zipInfo.style.display = 'block';
+    document.getElementById('zip-name-display').textContent = zipFiles.length === 1 ? zipFiles[0].name : `${zipFiles.length} 个 .zip 文件`;
+    document.getElementById('zip-summary').textContent = `${allEntries.length} 个 .cas 文件 · ${newCount} 个新文件 · ${formatSize(totalNewSize)}`;
+
+    _zipUploadData = { files: zipFiles, fileInfos, newCount, dedupCount, totalNewSize, allCount: allEntries.length };
+
+    const uploadBtn = document.getElementById('from-zip-btn');
+    uploadBtn.disabled = false;
+    uploadBtn.onclick = startFromZipUpload;
+
+    batchProgress.style.display = 'none';
+  } catch (err) {
+    batchProgress.style.display = 'none';
+    _zipUploadData = null;
+    showAlert(area, '解析 .zip 失败: ' + err.message, 'error');
+  }
+}
+
+async function startFromZipUpload() {
+  const data = _zipUploadData;
+  if (!data || data.files.length === 0) return;
+
+  const btn = document.getElementById('from-zip-btn');
+  btn.disabled = true;
+  btn.textContent = '上传中…';
+
+  const progress = document.getElementById('batch-progress');
+  const fill = document.getElementById('progress-fill');
+  const text = document.getElementById('progress-text');
+  const results = document.getElementById('batch-results');
+
+  progress.style.display = 'block';
+  results.innerHTML = '';
+  fill.style.width = '0%';
+  text.textContent = '上传中…';
+
+  try {
+    const fd = new FormData();
+    fd.append('file', data.files[0], data.files[0].name);
+    fd.append('name', data.files[0].name);
+    fd.append('files_info', JSON.stringify(data.fileInfos));
+    fd.append('zip_md5s', JSON.stringify(data.fileInfos.map(f => f.md5).filter(Boolean)));
+
+    const result = await apiRequest('/api/upload/from-zip', { method: 'POST', body: fd });
+
+    fill.style.width = '100%';
+    text.textContent = `上传成功！${result.new_count}/${data.allCount} 新文件，${formatSize(result.total_new_size)}`;
+    results.innerHTML = `<div class="batch-result-item success">
+      <span class="br-icon">✅</span>
+      <span class="br-file">${escapeHtml(data.files[0].name)}</span>
+      <span class="br-msg">${result.new_count} 个新文件，${result.dedup_count} 个跳过</span>
+    </div>`;
+
+    _zipUploadData = null;
+    document.getElementById('zip-info').style.display = 'none';
+    await refreshStats();
+    loadLeaderboard();
+  } catch (err) {
+    text.textContent = '上传失败';
+    results.innerHTML = `<div class="batch-result-item error">
+      <span class="br-icon">❌</span>
+      <span class="br-file">上传失败</span>
+      <span class="br-msg">${escapeHtml(err.message)}</span>
+    </div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📦 上传 .zip';
+  }
+}
+
+/* === Link share === */
+document.addEventListener('DOMContentLoaded', () => {
+  const linkForm = document.getElementById('link-form');
+  if (!linkForm) return;
+
+  const urlInput = document.getElementById('link-url');
+  const captionInput = document.getElementById('link-caption');
+  const pasteBtn = document.getElementById('link-paste-btn');
+  const submitBtn = linkForm.querySelector('.link-submit-btn');
+
+  // Paste from clipboard
+  if (pasteBtn) {
+    pasteBtn.addEventListener('click', async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          urlInput.value = text;
+          urlInput.dispatchEvent(new Event('input'));
+        }
+      } catch (e) {
+        showAlert(linkForm, '无法读取剪贴板', 'error');
+      }
+    });
+  }
+
+  // Auto-resize caption textarea
+  if (captionInput) {
+    captionInput.addEventListener('input', () => {
+      captionInput.style.height = 'auto';
+      captionInput.style.height = Math.min(captionInput.scrollHeight, 120) + 'px';
+    });
+  }
+
+  // Submit
+  linkForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const url = urlInput.value.trim();
+    const caption = captionInput.value.trim();
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span>⏳</span><span>发送中…</span>';
+
+    try {
+      await apiRequest('/api/upload/link', {
+        method: 'POST',
+        body: JSON.stringify({ url, caption }),
+      });
+      showAlert(linkForm, '✅ 链接已转发到频道！', 'success');
+      urlInput.value = '';
+      captionInput.value = '';
+      captionInput.style.height = 'auto';
+    } catch (err) {
+      showAlert(linkForm, '发送失败：' + err.message, 'error');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<span>📤</span><span>转发到频道</span>';
+    }
+  });
+});
 
 function showAlert(container, msg, type) {
   const alert = document.createElement('div');
